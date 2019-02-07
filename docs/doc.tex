@@ -11,7 +11,30 @@
 \tableofcontents
 \newpage
 
+\section{Specification}
+
+The objective of this project is to implement a proxy server with the following features:
+
+\begin{enumerate}
+	\item Respond to HTTP and HTTPS requests, displaying them and the responses on a management console.
+	\item Handle websocket connections.
+	\item Block selected URLs via the console.
+	\item Cache requests locally ro save bandwidth.
+	\item Handle multiple requests simultaneously.
+\end{enumerate}
+
 \section{Implementation}
+
+I chose to implement the proxy server in Python 3, using the following modules:
+
+\begin{enumerate}
+	\item \texttt{socket}: provides low-level access to the BSD socket interface
+	\item \texttt{threading}: provides higher-level threading interfaces based on the low-level \texttt{\_thread} module
+\end{enumerate}
+
+The following diagram outlines the design decisions I made.
+
+*Diagram*
 
 \section{Code}
 
