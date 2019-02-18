@@ -6,6 +6,7 @@
 \usepackage{listings}
 \usepackage{color}
 \usepackage{setspace}
+\usepackage{graphicx}
 
 \definecolor{Code}{rgb}{0,0,0}
 \definecolor{Decorators}{rgb}{0.5,0.5,0.5}
@@ -69,7 +70,7 @@ The objective of this project is to implement a proxy server with the following 
 	\item Respond to HTTP and HTTPS requests, displaying them and the responses on a management console.
 	\item Handle websocket connections.
 	\item Block selected URLs via the console.
-	\item Cache requests locally ro save bandwidth.
+	\item Cache requests locally to save bandwidth.
 	\item Handle multiple requests simultaneously.
 \end{enumerate}
 
@@ -86,7 +87,11 @@ I chose to implement the proxy server in Python 3, using the following modules:
 
 The following diagram outlines the design decisions I made.
 
-*Diagram*
+\begin{figure}[h]
+	\includegraphics[width=\linewidth]{proxy_diagram.png}
+	\caption{Proxy server diagram}
+	\label{fig:diagram}
+\end{figure}
 
 \newpage
 
