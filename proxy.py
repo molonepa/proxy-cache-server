@@ -1,30 +1,30 @@
 import sys
 import socket
 import threading
+from random import randint
 
 MAX_CHUNK_SIZE = 1024
 PROXY_ADDR = '127.0.0.1'
 PORT = 8080 #default port
+BLACKLIST = []
 
 """
 Thread class that deals with a connection from a client and processes it then sends it to the specified webserver
 """
 class connThread(threading.Thread):
     # thread setup
-    def __init__(self, threadID, addr, port):
+    def __init__(self, threadID, socket):
         threading.Thread.__init__(self)
         self.threadID = threadID
-        self.addr = addr
-        self.port = port
-        self.setDaemon(True)
+        self.socket = socket
     # thread execution
     def run(self):
-        print('starting thread', self.threadID)
-        clientToProxy(self.threadID, self.addr, self.port)
-        print('exiting thread', self.threadID)
+        print('Starting thread', self.threadID)
+        clientToProxy(self.threadID, self.socket)
+        print('Exiting thread', self.threadID)
 
 """
-Class is for parsing HTTP requests into their components
+Request class for parsing HTTP requests into their components
 """
 class request():
     # set initial values
@@ -56,32 +56,88 @@ class request():
             port = int((temp[(port_pos + 1):])[:webserver_pos - port_pos - 1])
             self.webserver = temp[:port_pos]
 
-def clientToProxy(threadID, addr, port):
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    sock.bind((addr, port))
+"""
+Function for dealing with incoming connections
+"""
+def clientToProxy(threadID, conn):
     while True:
+        data = conn.recv(MAX_CHUNK_SIZE)
+
+        if not data:
+            break
+        else:
+            request_str = data.decode()
+            print("Thread {}: {}".format(threadID, request_str))
+
+            req = request(request_str)
+            req.parse()
+            print("Thread {}: webserver {}".format(threadID, req.webserver))
+            print("Thread {}: port {}".format(threadID, req.port))
+
+            for i in range(len(BLACKLIST)):
+                if (req.webserver == BLACKLIST[i]):
+                    print("Thread {}: The hostname {} is blocked".format(threadID, req.webserver))
+                    conn.close()
+                    break
+
+            proxyToServer(threadID, req.webserver, req.port, data, conn)
+
+    conn.close()
+
+"""
+Function for dealing with outgoing connections
+"""
+def proxyToServer(threadID, addr, port, request, conn):
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        sock.connect((addr, port))
+        sock.sendall(request)
+    except socket.error:
+        if sock:
+            sock.close()
+        print("Could not open socket")
+        sys.exit(1)
+
+    while True:
+        data = sock.recv(MAX_CHUNK_SIZE)
+        if not data:
+            break
+        else:
+            str = data.decode()
+            print("Thread {}: {}".format(threadID, str))
+            conn.send(data)
+
+    sock.close()
+
+def main():
+
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        sock.bind((PROXY_ADDR, PORT))
         sock.listen()
         conn, conn_addr = sock.accept()
-        with conn:
-            print('connected by', conn_addr)
-            data = conn.recv(MAX_CHUNK_SIZE)
-            if not data:
-                break
-            else:
-                request_str = data.decode()
-                print(request_str)
-                req = request(request_str)
-                req.parse()
-                print(req.webserver)
-                print(req.port)
+        print("Connected by ", conn_addr)
 
-def proxyToServer(threadID, addr, port, request):
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    sock.connect((addr, port))
-    sock.sendall(request)
+    except socket.error:
+        if sock:
+            sock.close()
+        print("Could not open socket")
+        sys.exit(1)
 
-thread = connThread(1, PROXY_ADDR, PORT)
-thread.start()
-thread.join()
+    thread = connThread(randint(1000, 9999), conn)
+    thread.start()
+    thread.join()
+
+    while True:
+        cmd = input("Type 'block' to block URLs\n")
+        if (cmd == "block"):
+            cmd = input("Enter the URL(s) you would like to block separated by spaces\n")
+            BLACKLIST.append(cmd.split())
+            print("Blocked URLs: ", BLACKLIST)
+        else:
+            print("Invalid command")
+
+if __name__ == "__main__":
+    main()
