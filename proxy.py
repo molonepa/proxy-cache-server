@@ -1,37 +1,39 @@
 import sys
 import socket
-import _thread
+import threading
 
-MAX_CHUNK_SIZE = 99999999
-PROXY_ADDR = '127.0.0.1'
+MAX_CHUNK_SIZE = 2048
+PROXY_ADDR = '127.0.0.1' #host address
 PORT = 8080 #default port
-BLACKLIST = []
+BLACKLIST = [['example.org']] #blocked URLs
 
 """
-Request class for parsing HTTP requests into their components
+Request class for parsing HTTP/HTTPS requests into their components
 """
-class request():
+class HTTPRequest():
     # set initial values
-    def __init__(self, request_str):
-        self.request_str = request_str
+    def __init__(self, data):
+        self.data = data
         self.req_type = ""
         self.webserver = ""
         self.port = -1
     # parse request
     def parse(self):
-        self.req_type = self.request_str.split(' ')[0]
-        first = self.request_str.split('\n')[0]
-        url = first.split(' ')[1]
+        # HTTP/HTTPS
+        self.req_type = self.data.split(b' ')[0]
+
+        first = self.data.split(b'\n')[0]
+        url = first.split(b' ')[1]
     
-        http_pos = url.find("://")
+        http_pos = url.find(b"://")
         if (http_pos == -1):
             temp = url
         else:
             temp = url[(http_pos + 3):]
     
-        port_pos = temp.find(":")
+        port_pos = temp.find(b":")
 
-        webserver_pos = temp.find("/")
+        webserver_pos = temp.find(b"/")
         if (webserver_pos == -1):
             webserver_pos = len(temp)
 
@@ -41,46 +43,80 @@ class request():
         else:
             port = int((temp[(port_pos + 1):])[:webserver_pos - port_pos - 1])
             self.webserver = temp[:port_pos]
+"""
+Proxy handler function to be executed by thread
+"""
+def proxyThread(client_sock):
+    data = client_sock.recv(MAX_CHUNK_SIZE)
 
-def proxy(conn, conn_addr):
-    while True:
-        data = conn.recv(MAX_CHUNK_SIZE)
+    print("Request: {}".format(data.decode()))
 
-        if not data:
+    req = HTTPRequest(data)
+    req.parse()
+
+    for i in range(len(BLACKLIST)):
+        print('*\n')
+        if (req.webserver == BLACKLIST[i]):
+            print("The hostname {} is blocked".format(req.webserver))
+            client_sock.close()
             break
-        else:
-            request_str = data.decode("latin-1")
-            print("Request: {}".format(request_str))
-
-            req = request(request_str)
-            req.parse()
-
-            for i in range(len(BLACKLIST)):
-                if (req.webserver == BLACKLIST[i]):
-                    print("The hostname {} is blocked".format(req.webserver))
-                    conn.close()
-                    break
-    conn.close()
-
-def main():
 
     try:
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        server_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        server_sock.connect((req.webserver, req.port))
+        print("Connection established with {}:{}".format(req.webserver, req.port))
     except socket.error:
-        sock.close()
+        server_socket.close()
         print("Could not open socket")
         sys.exit(1)
 
-    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    sock.bind((PROXY_ADDR, PORT))
-    sock.listen()
+    if (req.req_type == b"CONNECT"):
+        try:
+            response = b"HTTP/1.0 200 Connection established\r\nProxy-agent: Pyx\r\n\r\n"
+            client_sock.sendall(response)
+        except socket.error:
+            print("Connection could not be established")
+    else:
+        server_sock.sendall(data)
 
     while True:
-        conn, conn_addr = sock.accept()
-        thread = _thread.start_new_thread(proxy, (conn, conn_addr))
-        print("Connected by ", conn_addr)
+        try:
+            request = client_sock.recv(MAX_CHUNK_SIZE)
+            server_sock.sendall(request)
+        except socket.error:
+            print("Error sending request to server")
+        try:
+            response = server_sock.recv(MAX_CHUNK_SIZE)
+            client_sock.sendall(response)
+        except socket.error:
+            print("Error sending response to client")
+        except KeyboardInterrupt:
+            print("Exiting...")
+            server_sock.close()
+            client_sock.close()
+            sys.exit(0)
+"""
+Main function initialises listening socket and starts threads for each incoming connection
+"""
+def main():
+    try:
+        proxy_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    except socket.error:
+        proxy_sock.close()
+        print("Could not open socket")
+        sys.exit(1)
 
-        cmd = input("Type 'block' to block URLs\n")
+    proxy_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    proxy_sock.bind((PROXY_ADDR, PORT))
+    proxy_sock.listen()
+
+    while True:
+        client_sock, client_addr = proxy_sock.accept()
+        print("Connected by ", client_addr)
+
+        threading.Thread(target=proxyThread, args=(client_sock,)).start()
+
+        cmd = input(" ")
         if (cmd == "block"):
             cmd = input("Enter the URL(s) you would like to block separated by spaces\n")
             BLACKLIST.append(cmd.split())
