@@ -2,11 +2,11 @@ import sys
 import socket
 import threading
 
-MAX_CHUNK_SIZE = 2048
+MAX_CHUNK_SIZE = 9999999
 PROXY_ADDR = '127.0.0.1' #host address
-PORT = 8080 #default port
-BLACKLIST = [['example.org']] #blocked URLs
-
+PORT = 8880 #default port
+HTTP_PORT = 443 #default port for HTTP
+BLACKLIST = [] #blocked URLs
 """
 Request class for parsing HTTP/HTTPS requests into their components
 """
@@ -38,7 +38,7 @@ class HTTPRequest():
             webserver_pos = len(temp)
 
         if (port_pos == -1 or webserver_pos < port_pos):
-            self.port = 5000
+            self.port = HTTP_PORT
             self.webserver = temp[:webserver_pos]
         else:
             port = int((temp[(port_pos + 1):])[:webserver_pos - port_pos - 1])
@@ -49,7 +49,7 @@ Proxy handler function to be executed by thread
 def proxyThread(client_sock):
     data = client_sock.recv(MAX_CHUNK_SIZE)
 
-    print("Request: {}".format(data.decode()))
+    print("Request: {}".format(data.decode("utf-8")))
 
     req = HTTPRequest(data)
     req.parse()
@@ -63,8 +63,8 @@ def proxyThread(client_sock):
 
     try:
         server_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        server_sock.connect((req.webserver, req.port))
-        print("Connection established with {}:{}".format(req.webserver, req.port))
+        server_sock.connect((req.webserver.decode(), req.port))
+        print("Connection established with {}:{}".format(req.webserver.decode(), req.port))
     except socket.error:
         server_socket.close()
         print("Could not open socket")
@@ -78,23 +78,30 @@ def proxyThread(client_sock):
             print("Connection could not be established")
     else:
         server_sock.sendall(data)
-
-    while True:
-        try:
-            request = client_sock.recv(MAX_CHUNK_SIZE)
-            server_sock.sendall(request)
-        except socket.error:
-            print("Error sending request to server")
+        """
+        while True:
+            try:
+                request = client_sock.recv(MAX_CHUNK_SIZE)
+                print(request.decode())
+                server_sock.sendall(request)
+            except socket.error:
+                print("Error sending request to server")
+        """
         try:
             response = server_sock.recv(MAX_CHUNK_SIZE)
-            client_sock.sendall(response)
+            #print(response.decode())
+            if (len(response) > 0):
+                client_sock.sendall(response)
+                print("Sending...")
         except socket.error:
-            print("Error sending response to client")
+            print("Error receiving response from server")
+        """
         except KeyboardInterrupt:
             print("Exiting...")
             server_sock.close()
             client_sock.close()
             sys.exit(0)
+        """
 """
 Main function initialises listening socket and starts threads for each incoming connection
 """
@@ -106,13 +113,12 @@ def main():
         print("Could not open socket")
         sys.exit(1)
 
-    proxy_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     proxy_sock.bind((PROXY_ADDR, PORT))
     proxy_sock.listen()
 
     while True:
         client_sock, client_addr = proxy_sock.accept()
-        print("Connected by ", client_addr)
+        print("Connection established by {}".format(client_addr))
 
         threading.Thread(target=proxyThread, args=(client_sock,)).start()
 
